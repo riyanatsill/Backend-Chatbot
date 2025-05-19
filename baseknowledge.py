@@ -4,7 +4,7 @@ from db import get_db_connection
 from model import extract_text_from_file, create_faiss_index, read_faiss_index
 from werkzeug.utils import secure_filename
 
-UPLOAD_FOLDER = 'data'
+UPLOAD_FOLDER = os.path.join(os.getcwd(), 'data')
 
 def upload_file_handler():
     if 'file' not in request.files:
@@ -65,7 +65,7 @@ def list_uploaded_files_handler():
                COUNT(q.id) AS total_qa
         FROM uploaded_files uf
         LEFT JOIN qa_data q ON uf.filename = q.filename
-        GROUP BY uf.filename
+        GROUP BY uf.filename, uf.uploaded_by, uf.uploaded_at
         ORDER BY uf.uploaded_at DESC
     """)
     files = cursor.fetchall()

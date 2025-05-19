@@ -51,7 +51,7 @@ def get_suggestions():
     suggestions = cursor.fetchall()
 
     for s in suggestions:
-        cursor.execute("SELECT question FROM faq_suggestion_variants WHERE suggestion_id = %s", (s["id"],))
+        cursor.execute("SELECT question FROM faq_suggestion_variant WHERE suggestion_id = %s", (s["id"],))
         variants = cursor.fetchall()
         s["variations"] = [v["question"] for v in variants]
 
@@ -91,20 +91,20 @@ def accept_suggestion(suggestion_id, data):
 
     # Tandai semua pertanyaan terkait sebagai finalized
     cursor.execute(
-        "SELECT question FROM faq_suggestion_variants WHERE suggestion_id = %s",
+        "SELECT question FROM faq_suggestion_variant WHERE suggestion_id = %s",
         (suggestion_id,)
     )
     variants = cursor.fetchall()
 
     for v in variants:
         cursor.execute(
-            "UPDATE user_questions SET finalized = TRUE WHERE question = %s",
+            "UPDATE history SET finalized = TRUE WHERE question = %s",
             (v["question"],)
         )
 
     # Juga tandai main_question
     cursor.execute(
-        "UPDATE user_questions SET finalized = TRUE WHERE question = %s",
+        "UPDATE history SET finalized = TRUE WHERE question = %s",
         (question,)
     )
 
@@ -129,12 +129,12 @@ def generate_suggestions():
     cursor = conn.cursor(dictionary=True)
 
     # Bersihkan data lama
-    cursor.execute("DELETE FROM faq_suggestion_variants")
+    cursor.execute("DELETE FROM faq_suggestion_variant")
     cursor.execute("DELETE FROM faq_suggestions")
     conn.commit()
 
     # Ambil pertanyaan yang belum difinalkan
-    cursor.execute("SELECT id, question FROM user_questions WHERE finalized = FALSE")
+    cursor.execute("SELECT id, question FROM history WHERE finalized = FALSE")
     rows = cursor.fetchall()
     questions = [row["question"] for row in rows]
     ids = [row["id"] for row in rows]
@@ -171,7 +171,7 @@ def generate_suggestions():
 
             for idx in group:
                 cursor.execute(
-                    "INSERT INTO faq_suggestion_variants (suggestion_id, question, similarity_score) VALUES (%s, %s, %s)",
+                    "INSERT INTO faq_suggestion_variant (suggestion_id, question, similarity_score) VALUES (%s, %s, %s)",
                     (suggestion_id, questions[idx], float(similarity_matrix[i][idx]))
                 )
                 used_indexes.add(idx)
@@ -187,7 +187,7 @@ def generate_suggestions():
 def get_all_questions():
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
-    cursor.execute("SELECT id, question, answer FROM user_questions ORDER BY id DESC")
+    cursor.execute("SELECT id, question, answer FROM history ORDER BY id DESC")
     result = cursor.fetchall()
     conn.close()
     return result

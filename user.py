@@ -14,7 +14,7 @@ def submit_question_handler():
     cursor = conn.cursor()
     try:
         cursor.execute("""
-            INSERT INTO user_questions (question, answer, finalized)
+            INSERT INTO history (question, answer, finalized)
             VALUES (%s, %s, %s)
         """, (question, answer, 0))  # finalized = 0 by default
         conn.commit()

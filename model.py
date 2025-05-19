@@ -18,7 +18,7 @@ index = None
 answers = []
 
 # === Path file index & jawaban ===
-INDEX_PATH = "faiss_index_dynamic.bin"
+INDEX_PATH = os.path.join(os.getcwd(), 'faiss_index_dynamic.bin')
 
 # === Load embedding model ===
 embedding_model = HuggingFaceEmbeddings(model_name="intfloat/multilingual-e5-large")

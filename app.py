@@ -2,12 +2,13 @@
 from flask import Flask, request, jsonify
 from flask_session import Session
 from flask_cors import CORS
+import pandas as pd
 from dotenv import load_dotenv
 from faq import get_all_faqs, add_faq, update_faq, delete_faq, get_suggestions, accept_suggestion, get_all_questions, generate_suggestions
-from account import login_handler, logout_handler, get_current_user_handler,get_users_handler, create_user_handler,update_user_handler, delete_user_handler,reset_password_handler
+from account import login_handler, logout_handler, get_current_user_handler,get_users_handler, create_user_handler, delete_user_handler,reset_password_handler
 from user import submit_question_handler
-from model import read_faiss_index, ask_handler
-from baseknowledge import upload_file_handler, delete_file_handler
+from model import read_faiss_index, ask_handler, create_faiss_index
+from baseknowledge import upload_file_handler, delete_file_handler, list_uploaded_files_handler
 import os
 
 from db import get_db_connection
@@ -18,14 +19,22 @@ load_dotenv()
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY")
 app.config['SESSION_TYPE'] = 'filesystem'
+app.config['SESSION_COOKIE_SAMESITE'] = 'None'
+app.config['SESSION_COOKIE_SECURE'] = True
 Session(app)
-CORS(app, supports_credentials=True, origins=["https://frontend-chatbot-beta.vercel.app/"])
+CORS(app, supports_credentials=True, origins=["https://frontend-chatbot-rho.vercel.app"])
 
-UPLOAD_FOLDER = 'data'
+UPLOAD_FOLDER = os.path.join(os.getcwd(), 'data')
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+INDEX_PATH = os.path.join(os.getcwd(), 'faiss_index_dynamic.bin')
 
 # === Load FAISS saat startup ===
-read_faiss_index()
+@app.before_first_request
+def init_faiss():
+    if not os.path.exists(INDEX_PATH):
+        print("⚠️ FAISS index tidak ditemukan. Membuat dari QA database...")
+        create_faiss_index()
+    read_faiss_index()
 
 
 # === USER ===
@@ -38,6 +47,11 @@ def ask_route():
 @app.route('/upload', methods=['POST'])
 def upload_file():
     return upload_file_handler()
+
+@app.route('/uploaded-files', methods=['GET'])
+def list_uploaded_files():
+    result = list_uploaded_files_handler()
+    return jsonify(result)
 
 @app.route('/delete-file/<filename>', methods=['DELETE'])
 def delete_file(filename):
@@ -65,11 +79,6 @@ def get_users_route():
 @app.route('/users', methods=['POST'])
 def create_user_route():
     return create_user_handler()
-
-@app.route('/users/<int:user_id>', methods=['PUT'])
-def update_user_route(user_id):
-    result = update_user_handler(user_id)
-    return update_user_handler(user_id)
 
 @app.route('/users/<int:user_id>', methods=['DELETE'])
 def delete_user_route(user_id):
@@ -123,9 +132,39 @@ def generate_faq_suggestions_route():
 
 
 # === Riwayat Pertanyaan User ===
-@app.route('/user-questions', methods=['GET'])
+@app.route('/history', methods=['GET'])
 def list_questions():
     return jsonify(get_all_questions())
+
+from flask import jsonify, send_file
+import io
+import json
+from db import get_db_connection
+
+@app.route("/export-history-excel", methods=["GET"])
+def export_history_excel():
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("SELECT id, question, answer FROM history ORDER BY id")
+    rows = cursor.fetchall()
+    conn.close()
+
+    if not rows:
+        return {"message": "Tidak ada data untuk diekspor."}, 404
+
+    df = pd.DataFrame(rows)
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        df.to_excel(writer, index=False, sheet_name="ChatHistory")
+    output.seek(0)
+
+    return send_file(
+        output,
+        as_attachment=True,
+        download_name="chat_history.xlsx",
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+
 
 
 # === Dashboard ===
@@ -138,7 +177,7 @@ def dashboard_stats():
     today = datetime.now().strftime('%Y-%m-%d')
     cursor.execute("""
         SELECT COUNT(*) AS total
-        FROM user_questions
+        FROM history
         WHERE DATE(created_at) = %s
     """, (today,))
     total_questions_today = cursor.fetchone()['total'] or 0
@@ -153,10 +192,10 @@ def dashboard_stats():
 
     # 4. Grafik: jumlah pertanyaan per hari (7 hari terakhir)
     cursor.execute("""
-        SELECT DATE_FORMAT(created_at, '%%Y-%%m-%%d') AS tanggal, COUNT(*) AS jumlah
-        FROM user_questions
+        SELECT DATE_FORMAT(created_at, '%Y-%m-%d') AS tanggal, COUNT(*) AS jumlah
+        FROM history
         WHERE created_at >= CURDATE() - INTERVAL 7 DAY
-        GROUP BY DATE_FORMAT(created_at, '%%Y-%%m-%%d')
+        GROUP BY DATE_FORMAT(created_at, '%Y-%m-%d')
         ORDER BY tanggal ASC
     """)
     questions_per_day = cursor.fetchall()

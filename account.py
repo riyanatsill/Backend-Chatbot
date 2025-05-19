@@ -21,11 +21,10 @@ def login_handler():
     session['user'] = {
         'id': user['id'],
         'username': user['username'],
-        'email': user['email'],
-        'role': user['role']
+        'email': user['email']
     }
 
-    return {'message': 'Login berhasil', 'role': user['role']}, 200  # tambahkan status 200 eksplisit
+    return {'message': 'Login berhasil', 'username': user['username']}, 200  # tambahkan status 200 eksplisit
 
 
 def get_current_user_handler():
@@ -43,7 +42,7 @@ def logout_handler():
 def get_users_handler():
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
-    cursor.execute("SELECT id, username, email, role, created_at FROM users ORDER BY id ASC")
+    cursor.execute("SELECT id, username, email, created_at FROM users ORDER BY id ASC")
     users = cursor.fetchall()
     cursor.close()
     conn.close()
@@ -55,42 +54,32 @@ def create_user_handler():
     username = data.get('username')
     email = data.get('email')
     password = data.get('password')
-    role = data.get('role', 'admin')
 
     if not username or not email or not password:
         return {'error': 'Semua field wajib diisi'}, 400
 
+    # Hash password
     hashed = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
 
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
 
+    # Cek apakah username atau email sudah terdaftar
     cursor.execute("SELECT id FROM users WHERE username = %s OR email = %s", (username, email))
     if cursor.fetchone():
+        cursor.close()
+        conn.close()
         return {'error': 'Username atau email sudah terdaftar'}, 409
 
-    cursor.execute("INSERT INTO users (username, email, password, role) VALUES (%s, %s, %s, %s)",
-                   (username, email, hashed, role))
+    # Insert user baru
+    cursor.execute(
+        "INSERT INTO users (username, email, password) VALUES (%s, %s, %s)",
+        (username, email, hashed)
+    )
     conn.commit()
     cursor.close()
     conn.close()
     return {'message': 'Admin berhasil ditambahkan'}
-
-
-def update_user_handler(user_id):
-    data = request.get_json()
-    role = data.get('role')
-
-    if role not in ['admin', 'superadmin']:
-        return {'error': 'Role tidak valid'}, 400
-
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("UPDATE users SET role = %s WHERE id = %s", (role, user_id))
-    conn.commit()
-    cursor.close()
-    conn.close()
-    return {'message': 'Role berhasil diperbarui'}
 
 
 def delete_user_handler(user_id):

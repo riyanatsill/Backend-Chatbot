@@ -3,3 +3,5 @@ flask_session/
 __pycache__/
 *.pyc
 *.pyo
+data/
+*faiss_index_dynamic.bin
