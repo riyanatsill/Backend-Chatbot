@@ -6,6 +6,8 @@ from dotenv import load_dotenv
 from faq import get_all_faqs, add_faq, update_faq, delete_faq, get_suggestions, accept_suggestion, get_all_questions, generate_suggestions
 from account import login_handler, logout_handler, get_current_user_handler,get_users_handler, create_user_handler,update_user_handler, delete_user_handler,reset_password_handler
 from user import submit_question_handler
+from model import read_faiss_index, ask_handler
+from baseknowledge import upload_file_handler, delete_file_handler
 import os
 
 from db import get_db_connection
@@ -17,7 +19,30 @@ app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY")
 app.config['SESSION_TYPE'] = 'filesystem'
 Session(app)
-CORS(app, supports_credentials=True)
+CORS(app, supports_credentials=True, origins=["https://frontend-chatbot-beta.vercel.app/"])
+
+UPLOAD_FOLDER = 'data'
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+# === Load FAISS saat startup ===
+read_faiss_index()
+
+
+# === USER ===
+@app.route("/ask", methods=["POST"])
+def ask_route():
+    result = ask_handler()
+    return jsonify(result)
+
+# === BASE KNOWLEDGE ===
+@app.route('/upload', methods=['POST'])
+def upload_file():
+    return upload_file_handler()
+
+@app.route('/delete-file/<filename>', methods=['DELETE'])
+def delete_file(filename):
+    result = delete_file_handler(filename)
+    return jsonify(result)
 
 
 # === ACCOUNT ===
@@ -162,4 +187,4 @@ def dashboard_stats():
 
 # === MAIN ===
 if __name__ == "__main__":
-    app.run(debug=True, port=5000)
+    app.run(host="0.0.0.0", port=5000)
