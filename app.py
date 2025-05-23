@@ -1,18 +1,18 @@
 # === app.py ===
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_file
 from flask_session import Session
 from flask_cors import CORS
 import pandas as pd
 from dotenv import load_dotenv
-from faq import get_all_faqs, add_faq, update_faq, delete_faq, get_suggestions, accept_suggestion, get_all_questions, generate_suggestions
+from faq import get_all_faqs, add_faq, update_faq, delete_faq, get_all_questions
 from account import login_handler, logout_handler, get_current_user_handler,get_users_handler, create_user_handler, delete_user_handler,reset_password_handler
 from user import submit_question_handler
-from model import read_faiss_index, ask_handler, create_faiss_index
-from baseknowledge import upload_file_handler, delete_file_handler, list_uploaded_files_handler
+from model import read_faiss_index, ask_handler
+from baseknowledge import upload_file_handler, delete_file_handler, list_uploaded_files_handler, get_qa_data
 import os
+import io
 
 from db import get_db_connection
-from datetime import datetime
 
 load_dotenv()
 # === SETUP ===
@@ -22,19 +22,13 @@ app.config['SESSION_TYPE'] = 'filesystem'
 app.config['SESSION_COOKIE_SAMESITE'] = 'None'
 app.config['SESSION_COOKIE_SECURE'] = True
 Session(app)
-CORS(app, supports_credentials=True, origins=["https://frontend-chatbot-rho.vercel.app"])
+CORS(app, supports_credentials=True, origins=["https://frontend-chatbot-rho.vercel.app"], expose_headers=["Content-Disposition"])
 
 UPLOAD_FOLDER = os.path.join(os.getcwd(), 'data')
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-INDEX_PATH = os.path.join(os.getcwd(), 'faiss_index_dynamic.bin')
 
 # === Load FAISS saat startup ===
-@app.before_first_request
-def init_faiss():
-    if not os.path.exists(INDEX_PATH):
-        print("⚠️ FAISS index tidak ditemukan. Membuat dari QA database...")
-        create_faiss_index()
-    read_faiss_index()
+read_faiss_index()
 
 
 # === USER ===
@@ -57,6 +51,12 @@ def list_uploaded_files():
 def delete_file(filename):
     result = delete_file_handler(filename)
     return jsonify(result)
+
+@app.route('/qa-data', methods=['GET'])
+def qa_data():
+    result = get_qa_data()
+    return jsonify(result)
+
 
 
 # === ACCOUNT ===
@@ -95,7 +95,7 @@ def submit_question_route():
     return jsonify(result)
 
 
-# === Final FAQ ===
+# === FAQ ===
 @app.route('/faq', methods=['GET'])
 def list_faqs():
     return jsonify(get_all_faqs())
@@ -115,37 +115,30 @@ def delete_faq_route(faq_id):
     return jsonify(delete_faq(faq_id))
 
 
-# === FAQ Suggestion ===
-@app.route('/faq-suggestions', methods=['GET'])
-def list_suggestions():
-    return jsonify(get_suggestions())
-
-@app.route('/faq-suggestions/<int:suggestion_id>/accept', methods=['POST'])
-def accept_suggestion_route(suggestion_id):
-    data = request.json
-    return jsonify(accept_suggestion(suggestion_id, data))
-
-@app.route('/faq-suggestions/generate', methods=['POST'])
-def generate_faq_suggestions_route():
-    result = generate_suggestions()
-    return jsonify(result)
-
-
 # === Riwayat Pertanyaan User ===
 @app.route('/history', methods=['GET'])
 def list_questions():
-    return jsonify(get_all_questions())
+    result = get_all_questions()
+    return jsonify(result)
 
-from flask import jsonify, send_file
-import io
-import json
-from db import get_db_connection
 
 @app.route("/export-history-excel", methods=["GET"])
 def export_history_excel():
+    category = request.args.get("category")
+    
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
-    cursor.execute("SELECT id, question, answer FROM history ORDER BY id")
+
+    if category and category.lower() != "semua":
+        cursor.execute("""
+            SELECT id, question, answer, category 
+            FROM history 
+            WHERE category = %s 
+            ORDER BY id
+        """, (category,))
+    else:
+        cursor.execute("SELECT id, question, answer, category FROM history ORDER BY id")
+    
     rows = cursor.fetchall()
     conn.close()
 
@@ -158,10 +151,13 @@ def export_history_excel():
         df.to_excel(writer, index=False, sheet_name="ChatHistory")
     output.seek(0)
 
+    file_safe_category = (category or 'semua').strip().lower().replace(" ", "_")
+    filename = f"chat_history_{file_safe_category}.xlsx"
+
     return send_file(
         output,
         as_attachment=True,
-        download_name="chat_history.xlsx",
+        download_name=filename,
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
 
@@ -174,13 +170,11 @@ def dashboard_stats():
     cursor = conn.cursor(dictionary=True)
 
     # 1. Total pertanyaan hari ini
-    today = datetime.now().strftime('%Y-%m-%d')
     cursor.execute("""
-        SELECT COUNT(*) AS total
-        FROM history
-        WHERE DATE(created_at) = %s
-    """, (today,))
-    total_questions_today = cursor.fetchone()['total'] or 0
+    SELECT COUNT(*) AS total
+    FROM history
+    """)
+    total_questions = cursor.fetchone()['total'] or 0
 
     # 2. Jumlah file base knowledge
     cursor.execute("SELECT COUNT(*) AS total FROM uploaded_files")
@@ -203,7 +197,7 @@ def dashboard_stats():
     # 5. Grafik: kategori pertanyaan terbanyak
     cursor.execute("""
         SELECT category, COUNT(*) AS value
-        FROM faq_final
+        FROM history
         WHERE category IS NOT NULL
         GROUP BY category
         ORDER BY value DESC
@@ -215,7 +209,7 @@ def dashboard_stats():
     conn.close()
 
     return jsonify({
-        "total_questions_today": total_questions_today,
+        "total_questions_today": total_questions,
         "total_files_uploaded": total_files_uploaded,
         "total_qa_indexed": total_qa_indexed,
         "questions_per_day": questions_per_day,

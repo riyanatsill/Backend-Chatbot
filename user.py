@@ -1,5 +1,15 @@
 from flask import request
 from db import get_db_connection
+import joblib
+
+
+model = joblib.load("faq_classifier.joblib")
+
+def classify_question(text):
+    if model:
+        return model.predict([text])[0]
+    return "Umum"
+
 
 
 def submit_question_handler():
@@ -9,14 +19,15 @@ def submit_question_handler():
 
     if not question:
         return {'error': 'Pertanyaan wajib diisi'}, 400
+    category = classify_question(question)
 
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
         cursor.execute("""
-            INSERT INTO history (question, answer, finalized)
+            INSERT INTO history (question, answer, category)
             VALUES (%s, %s, %s)
-        """, (question, answer, 0))  # finalized = 0 by default
+        """, (question, answer, category))
         conn.commit()
         return {'message': 'Pertanyaan berhasil disimpan'}
     except Exception as e:

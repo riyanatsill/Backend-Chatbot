@@ -33,7 +33,7 @@ generator = pipeline(
     "text-generation",
     model=model,
     tokenizer=tokenizer,
-    max_new_tokens=256,
+    max_new_tokens=512,
     return_full_text=True,
     eos_token_id=tokenizer.eos_token_id,
 )
@@ -98,7 +98,7 @@ def build_prompt(context, question):
     return f"""
 Anda adalah asisten resmi Penerimaan Mahasiswa Baru (PMB) Politeknik Negeri Jakarta.
 Anda akan diberi konteks berupa pasangan pertanyaan dan jawaban yang berkaitan dengan informasi PMB, serta sebuah pertanyaan dari pengguna.
-Jawablah pertanyaan berdasarkan konteks yang tersedia.
+Jawablah pertanyaan berdasarkan konteks yang paling relevan.
 
 Informasi:
 {context}
@@ -173,7 +173,7 @@ def read_faiss_index():
 
 
 # === Ambil jawaban dari index ===
-def retrieve_docs(query, top_k=3, max_context=1500):
+def retrieve_docs(query, top_k=3, max_context=2000):
     global index, answers
 
     if index is None or not answers:

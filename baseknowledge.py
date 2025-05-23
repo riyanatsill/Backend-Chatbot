@@ -94,3 +94,32 @@ def delete_file_handler(filename):
     create_faiss_index()
 
     return {"message": f"File {filename} dan seluruh QA terkait berhasil dihapus."}
+
+def get_qa_data():
+    page = int(request.args.get("page", 1))
+    limit = int(request.args.get("limit", 10))
+    offset = (page - 1) * limit
+
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    cursor.execute("SELECT COUNT(*) AS total FROM qa_data")
+    total = cursor.fetchone()["total"]
+
+    cursor.execute("""
+        SELECT id, question, answer, filename
+        FROM qa_data
+        ORDER BY id ASC
+        LIMIT %s OFFSET %s
+    """, (limit, offset))
+
+    results = cursor.fetchall()
+    cursor.close()
+    conn.close()
+
+    return {
+        "qa": results,
+        "total": total,
+        "page": page,
+        "limit": limit
+    }
