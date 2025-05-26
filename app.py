@@ -3,8 +3,9 @@ from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 import pandas as pd
 from dotenv import load_dotenv
+from extensions import mail
 from faq import get_all_faqs, add_faq, update_faq, delete_faq, get_all_questions
-from account import login_handler, logout_handler, get_current_user_handler,get_users_handler, create_user_handler, delete_user_handler,reset_password_handler
+from account import login_handler, logout_handler, get_current_user_handler,get_users_handler, create_user_handler, delete_user_handler,reset_password_handler, reset_password_email_handler
 from user import submit_question_handler
 from model import read_faiss_index, ask_handler
 from baseknowledge import upload_file_handler, delete_file_handler, list_uploaded_files_handler, get_qa_data
@@ -17,6 +18,12 @@ load_dotenv()
 # === SETUP ===
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.getenv("SECRET_KEY")
+app.config['MAIL_SERVER'] = 'smtp.gmail.com'
+app.config['MAIL_PORT'] = 587
+app.config['MAIL_USE_TLS'] = True
+app.config['MAIL_USERNAME'] = os.getenv('MAIL_USERNAME')
+app.config['MAIL_PASSWORD'] = os.getenv('MAIL_PASSWORD')
+mail.init_app(app)
 CORS(app, origins=["https://pmb-productions.vercel.app", "http://localhost:5173"], expose_headers=["Content-Disposition"])
 
 UPLOAD_FOLDER = os.path.join(os.getcwd(), 'data')
@@ -82,6 +89,10 @@ def delete_user_route(user_id):
 @app.route('/users/reset-password', methods=['PUT'])
 def reset_password_route():
     return reset_password_handler()
+
+@app.route('/users/reset-password-email', methods=['POST'])
+def reset_password_email_route():
+    return reset_password_email_handler()
 
 # === USER ===
 @app.route('/submit-question', methods=['POST'])
