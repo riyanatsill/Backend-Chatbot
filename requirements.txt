@@ -21,3 +21,4 @@ accelerate==1.5.2
 bitsandbytes==0.45.3
 openpyxl==3.1.5
 Flask-Mail==0.10.0
+PyJWT==2.10.1

@@ -26,31 +26,46 @@ def login_handler():
     if not user:
         return {'error': 'Username atau password salah'}, 401
 
+    # ❌ Cek dulu kalau sudah diblokir
     if user.get("is_blocked"):
-        reset_token = generate_reset_token(user['email'])
-        reset_link = f"https://pmb-productions.vercel.app/reset-password?token={reset_token}"
+        return {'error': 'Akun ini terblokir. Silakan reset password melalui email.'}, 403
 
-        cursor.execute("UPDATE users SET reset_token = %s WHERE id = %s", (reset_token, user['id']))
-        conn.commit()
-
-        send_reset_email(user['email'], reset_link)
-        return {'error': 'Akun ini terblokir. Link reset sudah dikirim ke email.'}, 403
-
+    # ❌ Cek password
     if not bcrypt.checkpw(password.encode('utf-8'), user['password'].encode('utf-8')):
         new_failed = user.get("failed_attempts", 0) + 1
         is_blocked = new_failed >= 3
+
+        # Update failed_attempts dan is_blocked
         cursor.execute(
             "UPDATE users SET failed_attempts = %s, is_blocked = %s WHERE id = %s",
             (new_failed, is_blocked, user['id'])
         )
         conn.commit()
+
+        if is_blocked:
+            if not user.get("reset_token"):
+                # Generate token reset password
+                reset_token = generate_reset_token(user['email'])
+                reset_link = f"https://pmb-productions.vercel.app/reset-password?token={reset_token}"
+
+                # Simpan reset_token di DB
+                cursor.execute("UPDATE users SET reset_token = %s WHERE id = %s", (reset_token, user['id']))
+                conn.commit()
+
+                # Kirim email reset password
+                send_reset_email(user['email'], reset_link)
+
+            return {'error': 'Akun ini terblokir. Link reset sudah dikirim ke email.'}, 403
+
         return {'error': 'Username atau password salah'}, 401
 
+    # ✅ Password benar: reset failed_attempts
     cursor.execute("UPDATE users SET failed_attempts = 0 WHERE id = %s", (user['id'],))
     conn.commit()
     cursor.close()
     conn.close()
 
+    # ✅ Login token (biasa)
     token = jwt.encode(
         {"id": user['id'], "username": user['username'], "email": user['email'], "exp": datetime.datetime.utcnow() + datetime.timedelta(minutes=15)},
         os.getenv("SECRET_KEY", "secret"),
