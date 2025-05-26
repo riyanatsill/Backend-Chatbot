@@ -1,6 +1,5 @@
 # === app.py ===
 from flask import Flask, request, jsonify, send_file
-from flask_session import Session
 from flask_cors import CORS
 import pandas as pd
 from dotenv import load_dotenv
@@ -17,12 +16,8 @@ from db import get_db_connection
 load_dotenv()
 # === SETUP ===
 app = Flask(__name__)
-app.secret_key = os.getenv("SECRET_KEY")
-app.config['SESSION_TYPE'] = 'filesystem'
-app.config['SESSION_COOKIE_SAMESITE'] = 'None'
-app.config['SESSION_COOKIE_SECURE'] = True
-Session(app)
-CORS(app, supports_credentials=True, origins=["https://frontend-chatbot-rho.vercel.app"], expose_headers=["Content-Disposition"])
+app.config['SECRET_KEY'] = os.getenv("SECRET_KEY")
+CORS(app, origins=["https://pmb-productions.vercel.app", "http://localhost:5173"], expose_headers=["Content-Disposition"])
 
 UPLOAD_FOLDER = os.path.join(os.getcwd(), 'data')
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)

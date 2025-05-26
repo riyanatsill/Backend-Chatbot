@@ -1,12 +1,28 @@
 import os
-from flask import request, session
+from flask import request
 from db import get_db_connection
+import jwt
 from model import extract_text_from_file, create_faiss_index, read_faiss_index
 from werkzeug.utils import secure_filename
 
+SECRET_KEY = os.getenv("SECRET_KEY")
 UPLOAD_FOLDER = os.path.join(os.getcwd(), 'data')
 
 def upload_file_handler():
+    # === Validasi token JWT ===
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        return {"message": "Unauthorized"}, 401
+
+    token = auth_header.replace("Bearer ", "")
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+    except jwt.ExpiredSignatureError:
+        return {"message": "Token expired"}, 401
+    except jwt.DecodeError:
+        return {"message": "Invalid token"}, 401
+
+    # === Validasi file ===
     if 'file' not in request.files:
         return {"message": "Tidak ada file yang dikirim."}, 400
 
@@ -15,38 +31,43 @@ def upload_file_handler():
         return {"message": "Nama file kosong."}, 400
 
     filename = secure_filename(file.filename)
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("SELECT id FROM uploaded_files WHERE filename = %s", (filename,))
+    existing = cursor.fetchone()
+
+    if existing:
+        conn.close()
+        return {"message": f"File '{filename}' sudah ada. Gunakan nama berbeda."}, 409
     filepath = os.path.join(UPLOAD_FOLDER, filename)
     file.save(filepath)
 
     try:
+        # Ekstrak QA dari file
         qa_pairs = extract_text_from_file(filepath)
         print("✅ Jumlah QA ditemukan:", len(qa_pairs))
         if not qa_pairs:
             return {"message": "File tidak mengandung QA valid."}, 400
 
-        uploaded_by = session.get("user", {}).get("username", "unknown")
+        uploaded_by = payload["username"]
 
-        # Simpan file ke uploaded_files
-        conn = get_db_connection()
-        cursor = conn.cursor()
+        # === Simpan metadata file ===
         cursor.execute("""
             INSERT INTO uploaded_files (filename, uploaded_by)
             VALUES (%s, %s)
-            ON DUPLICATE KEY UPDATE uploaded_at = NOW(), uploaded_by = %s
-        """, (filename, uploaded_by, uploaded_by))
+        """, (filename, uploaded_by))
 
-        # Simpan QA langsung ke qa_data
+        # === Simpan QA pairs ke DB ===
         for qa in qa_pairs:
             cursor.execute("""
-            INSERT INTO qa_data (question, answer, filename, created_by)
-            VALUES (%s, %s, %s, %s)
-        """, (qa["question"], qa["answer"], filename, uploaded_by))
-
+                INSERT INTO qa_data (question, answer, filename, created_by)
+                VALUES (%s, %s, %s, %s)
+            """, (qa["question"], qa["answer"], filename, uploaded_by))
 
         conn.commit()
         conn.close()
 
-        # Update FAISS index dari database
+        # === Update FAISS Index ===
         create_faiss_index()
         read_faiss_index()
 
@@ -55,7 +76,7 @@ def upload_file_handler():
     except Exception as e:
         import traceback
         traceback.print_exc()
-        return {"message": f"Gagal memproses file: {e}"}, 500
+        return {"message": f"Gagal memproses file: {str(e)}"}, 500
     
 def list_uploaded_files_handler():
     conn = get_db_connection()

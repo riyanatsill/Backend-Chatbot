@@ -60,7 +60,7 @@ def get_all_questions():
             SELECT id, question, answer, category
             FROM history
             WHERE category = %s
-            ORDER BY id ASC
+            ORDER BY id DESC
             LIMIT %s OFFSET %s
         """, (category, limit, offset))
     else:
@@ -70,7 +70,7 @@ def get_all_questions():
         cursor.execute("""
             SELECT id, question, answer, category
             FROM history
-            ORDER BY id ASC
+            ORDER BY id DESC
             LIMIT %s OFFSET %s
         """, (limit, offset))
 
