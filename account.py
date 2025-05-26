@@ -46,7 +46,7 @@ def login_handler():
             if not user.get("reset_token"):
                 # Generate token reset password
                 reset_token = generate_reset_token(user['email'])
-                reset_link = f"https://pmb-productions.vercel.app/reset-password?token={reset_token}"
+                reset_link = f"https://smartpnj.vercel.app/reset-password?token={reset_token}"
 
                 # Simpan reset_token di DB
                 cursor.execute("UPDATE users SET reset_token = %s WHERE id = %s", (reset_token, user['id']))

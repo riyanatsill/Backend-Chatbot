@@ -8,9 +8,9 @@ import re
 import numpy as np
 import faiss
 import torch
-from langchain.embeddings import HuggingFaceEmbeddings
 from flask import request
 from transformers import pipeline, AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
+from sentence_transformers import SentenceTransformer
 from db import get_db_connection
 
 # === Variabel global ===
@@ -21,7 +21,7 @@ answers = []
 INDEX_PATH = os.path.join(os.getcwd(), 'faiss_index_dynamic.bin')
 
 # === Load embedding model ===
-embedding_model = HuggingFaceEmbeddings(model_name="intfloat/multilingual-e5-large")
+embedding_model = SentenceTransformer("intfloat/multilingual-e5-large")
 
 # === Load LLM ===
 bnb_config = BitsAndBytesConfig(load_in_4bit=True, bnb_4bit_compute_dtype=torch.float16, llm_int8_enable_fp32_cpu_offload=True)
@@ -125,7 +125,7 @@ def create_faiss_index():
 
     for row in records:
         q = row["question"].strip()
-        emb = embedding_model.embed_documents([q])[0]
+        emb = embedding_model.encode(q)
         embeddings.append(emb)
         ids.append(row["id"])
 
@@ -180,7 +180,7 @@ def retrieve_docs(query, top_k=3, max_context=2000):
         print("⚠️ Index belum dimuat.")
         return ""
 
-    query_embedding = embedding_model.embed_query(query)
+    query_embedding = embedding_model.encode(query)
     query_embedding = np.array(query_embedding).astype("float32")[np.newaxis, :]
 
     distances, indices = index.search(query_embedding, top_k)
@@ -202,11 +202,9 @@ def retrieve_docs(query, top_k=3, max_context=2000):
     return context.strip()
 
 # === Generate jawaban LLM ===
-# 🔹 Cek apakah input hanya sapaan tanpa niat bertanya
 def is_greeting_only(text):
     text = text.lower().strip()
 
-    # Frasa lengkap yang dianggap sapaan biasa (tidak perlu masuk RAG)
     greeting_phrases = [
         "hai", "halo", "hi", "assalamualaikum", "p", "test", "ping",
         "hai chat", "hai bot", "halo chat", "halo bot",
@@ -214,9 +212,7 @@ def is_greeting_only(text):
         "hai semua", "halo semua", "malam", "pagi", "siang", "sore"
     ]
 
-    # Jika input cocok persis atau mengandung frasa sapaan + tidak ada kata penting
     if any(text.startswith(phrase) or text == phrase for phrase in greeting_phrases):
-        # Tambahan proteksi jika tidak mengandung kata-kata tanya berat
         question_keywords = r"\b(apa|bagaimana|kapan|dimana|siapa|mengapa|berapa|tanya|info|informasi|biaya|jalur|daftar|pmb)\b"
         if not re.search(question_keywords, text):
             return True
@@ -225,11 +221,9 @@ def is_greeting_only(text):
 
 
 def generate_response(query, top_k=3):
-    # Kasus hanya sapaan saja
     if is_greeting_only(query):
         return "Halo! Ada yang bisa saya bantu seputar PMB Politeknik Negeri Jakarta? 😊"
 
-    # Tidak ada sapaan, langsung lanjut proses RAG
     context = retrieve_docs(query, top_k=top_k)
     print("🔍 Context retrieved:\n", context)
     if not context:
@@ -263,7 +257,7 @@ def ask_handler():
     if not question:
         return {"error": "Pertanyaan tidak boleh kosong."}, 400
 
-    answer = generate_response(question)  # hanya 1 nilai return
+    answer = generate_response(question)
     print("🟡 Pertanyaan:", question)
     print("🟢 Jawaban:", answer)
 

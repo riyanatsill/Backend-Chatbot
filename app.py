@@ -24,7 +24,7 @@ app.config['MAIL_USE_TLS'] = True
 app.config['MAIL_USERNAME'] = os.getenv('MAIL_USERNAME')
 app.config['MAIL_PASSWORD'] = os.getenv('MAIL_PASSWORD')
 mail.init_app(app)
-CORS(app, origins=["https://pmb-productions.vercel.app", "http://localhost:5173"], expose_headers=["Content-Disposition"])
+CORS(app, origins=["https://pmb-productions.vercel.app", "https://smartpnj.vercel.app"], expose_headers=["Content-Disposition"])
 
 UPLOAD_FOLDER = os.path.join(os.getcwd(), 'data')
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
@@ -226,4 +226,4 @@ def dashboard_stats():
 
 # === MAIN ===
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+    app.run(debug=True, host="0.0.0.0", port=5000)
